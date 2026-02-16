@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>台球互动小游戏</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #1C9574; /* 这里改成你的背景色 */
+      color: #fff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    .game-container {
+      width: 100vw;
+      max-width: 480px;
+      padding: 16px;
+    }
+
+    .title {
+      text-align: center;
+      margin-bottom: 12px;
+      font-size: 18px;
+      letter-spacing: 1px;
+    }
+
+    .grid {
+      /* 改为一个自由场景区域，内部元素由 JS 随机定位 */
+      position: relative;
+      width: 100%;
+      height: 70vh;
+      max-height: 600px;
+      margin-top: 8px;
+    }
+
+    .cell {
+      position: absolute;
+      width: 22%;
+      aspect-ratio: 1 / 1; /* 保持大致正方形 */
+      overflow: visible;
+      touch-action: none; /* 允许拖拽而不是滚动 */
+    }
+
+    .ball-btn,
+    .dialog {
+      position: absolute;
+      inset: 0;
+    }
+
+    .ball-btn {
+      /* 只使用你提供的 PNG，不再画额外的底球 */
+      border-radius: 0;
+      overflow: visible;
+      background: transparent;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      transition: transform 0.15s ease;
+    }
+
+    .ball-btn img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .ball-btn:active {
+      transform: scale(0.95);
+    }
+
+    .dialog {
+      display: none;
+      border-radius: 14px;
+      background: #ffffff; /* 白色长方形对话框 */
+      border: 2px solid rgba(0, 0, 0, 0.08);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: left;
+      font-size: 13px;
+      line-height: 1.4;
+      color: #222222; /* 文字改为深色，配合白底 */
+      opacity: 0;
+      transform: scale(0.9);
+      pointer-events: none;
+    }
+
+    .dialog.show {
+      animation: fadeInScale 0.5s forwards;
+    }
+
+    @keyframes fadeInScale {
+      0% {
+        opacity: 0;
+        transform: scale(0.8);
+      }
+      100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    /* 心形完成后出现的按钮 */
+    .start-button {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      padding: 10px 22px;
+      border-radius: 999px;
+      border: none;
+      background: #ffffff;
+      color: #1C9574;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      cursor: pointer;
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+      transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+      z-index: 10;
+    }
+
+    .start-button:active {
+      transform: translate(-50%, -50%) scale(0.96);
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+    }
+
+    /* 绘画与烟花舞台 */
+    #paint-layer {
+      position: fixed;
+      inset: 0;
+      pointer-events: auto;
+      overflow: hidden;
+      z-index: 20;
+    }
+
+    #fireworksCanvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .brush-stamp {
+      position: absolute;
+      width: 64px;
+      height: 64px;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- 第一页：开场故事 -->
+  <div id="intro-screen" class="game-container">
+    <div class="title">2025-2026～</div>
+    <p style="margin-top: 8px; font-size: 14px; line-height: 1.6;">
+      故事的开头, 你说你叫心言，我说叫我安安叭～
+    </p>
+    <button id="intro-next"
+      style="margin-top: 24px; padding: 10px 22px; border-radius: 999px; border: none; background: #ffffff; color: #1C9574; font-size: 16px; font-weight: 600; letter-spacing: 1px; cursor: pointer; box-shadow: 0 6px 16px rgba(0,0,0,0.35);">
+      ➡️
+    </button>
+  </div>
+
+  <!-- 第二页：台球互动页面 -->
+  <div id="game-screen" class="game-container" style="display:none;">
+    <div class="title">故事的过程，是我们一起慢慢走过的每一天。
+    </div>
+    <div class="grid" id="grid"></div>
+    <!-- 背景音乐音量控制条 -->
+    <div id="bgm-control" style="margin-top: 10px; display: flex; align-items: center; gap: 8px; font-size: 12px;">
+      <span>音乐音量</span>
+      <input id="bgm-volume" type="range" min="0" max="100" value="70" style="flex:1;">
+    </div>
+  </div>
+
+  <!-- 背景音乐：请把 bgm.m4a 改成你自己的文件名 -->
+  <audio id="bgm" src="bgm.MP3" loop></audio>
+
+  <script>
+    // 你已有的图片文件名（不够 16 个没关系，可以重复使用）
+    const IMAGE_FILES = [
+      "IMG_1961.PNG",
+      "IMG_1962.PNG",
+      "IMG_1963.PNG",
+      "IMG_1964.PNG",
+      "IMG_1965.PNG",
+      "IMG_1966.PNG",
+      "IMG_1967.PNG",
+      "IMG_1968.PNG",
+      "IMG_1969.PNG",
+      "IMG_1970.PNG",
+      "IMG_1971.PNG",
+      "IMG_1972.PNG",
+      "IMG_1973.PNG"
+      // 如果没有这么多，就只保留你真正有的几个文件名
+    ];
+
+    /**
+     * 这里是 16 个台球的「一一对应配置」：
+     * - text：对应音频要显示的文字，已经帮你加好了 ❤️ 开头，你只需要改后面的内容
+     * - audio：对应的音频文件名（放在和 index.html 同一目录，或写上相对路径）
+     * - img：用哪一张图片（可重复；如果不在意具体对应，也可以都用同一张）
+     *
+     * TODO：请你按自己的内容修改每一行的 text 和 audio。
+     */
+    const BASE_BALL_CONFIGS = [
+      { text: "❤️ 在心言面前可以变成笨蛋诶～",  audio: "audio1.m4a"  },
+      { text: "❤️ 心言真的超棒的诶！",          audio: "audio2.m4a"  },
+      { text: "❤️ 心言，要开心一点！",          audio: "audio3.m4a"  },
+      { text: "❤️ 我超级想你 心言",            audio: "audio4.m4a"  },
+      { text: "❤️ 心言，我好爱你",             audio: "audio5.m4a"  },
+      { text: "❤️ 我想你了，心言",             audio: "audio6.m4a"  },
+      { text: "❤️ 我想见你，心言",             audio: "audio7.m4a"  },
+      { text: "❤️ 想一直当心言的小朋友",        audio: "audio8.m4a"  },
+      { text: "❤️ 爱你，心言",                 audio: "audio9.m4a"  },
+      { text: "❤️ mua，心言，你想我吗",        audio: "audio10.m4a" },
+      { text: "❤️ 心言，我们要一直一直在一起哦", audio: "audio11.m4a" },
+      { text: "❤️ 心言，我们会一起度过很多很多困难～", audio: "audio12.m4a" },
+      { text: "❤️ 安安要一直陪着心言～",        audio: "audio13.m4a" },
+      { text: "❤️ Love you～",                 audio: "audio14.m4a" },
+      { text: "❤️ 心言，新年快乐～",           audio: "audio15.m4a" },
+      { text: "❤️ 超级爱你，心言",             audio: "audio16.m4a" }
+    ];
+
+    // 根据现有图片数量进行循环分配，保证不会引用到不存在的图片
+    const BALL_CONFIGS = BASE_BALL_CONFIGS.map((cfg, index) => ({
+      ...cfg,
+      img: IMAGE_FILES[index % IMAGE_FILES.length]
+    }));
+
+    // 画笔图片（请替换为你自己的 3 个 PNG 路径）
+    const BRUSH_IMAGES = [
+      "IMG_2380.JPG",
+      "IMG_1978.PNG",
+      "IMG_2375.png"
+    ];
+
+    const gridEl = document.getElementById("grid");
+    const bgmEl = document.getElementById("bgm");
+    const bgmVolumeSlider = document.getElementById("bgm-volume");
+    const introScreen = document.getElementById("intro-screen");
+    const gameScreen = document.getElementById("game-screen");
+    const introNextBtn = document.getElementById("intro-next");
+    let bgmStarted = false;
+
+    function tryStartBgm() {
+      if (bgmStarted || !bgmEl) return;
+      bgmStarted = true;
+      // 设置初始音量与滑块一致
+      if (bgmVolumeSlider) {
+        bgmEl.volume = (Number(bgmVolumeSlider.value) || 70) / 100;
+      }
+      bgmEl.play().catch(() => {
+        // 某些浏览器可能仍然拦截自动播放，这里静默失败即可
+        bgmStarted = false;
+      });
+    }
+
+    // 全局监听一次用户交互，尽早启动背景音乐（兼容点击/触摸/按压）
+    ["pointerdown", "touchstart", "click"].forEach((evt) => {
+      document.addEventListener(
+        evt,
+        () => {
+          tryStartBgm();
+        },
+        { once: true }
+      );
+    });
+
+    // 绑定音量滑块事件
+    if (bgmVolumeSlider && bgmEl) {
+      bgmEl.volume = (Number(bgmVolumeSlider.value) || 70) / 100;
+      bgmVolumeSlider.addEventListener("input", () => {
+        const v = Number(bgmVolumeSlider.value);
+        if (Number.isFinite(v)) {
+          bgmEl.volume = Math.max(0, Math.min(1, v / 100));
+        }
+      });
+    }
+
+    // 开场页「开始故事」按钮：切换到台球页面
+    if (introNextBtn && introScreen && gameScreen) {
+      introNextBtn.addEventListener("click", () => {
+        introScreen.style.display = "none";
+        gameScreen.style.display = "block";
+        // 进入第二页时也尝试启动一次背景音乐
+        tryStartBgm();
+      });
+    }
+
+    let startButton = null;
+    let paintingMode = false;
+    let paintLayer = null;
+    let fireworksCanvas = null;
+    let fireworksCtx = null;
+    let currentBrushIndex = 0;
+    const fireworks = [];
+
+    // 心形目标位置（0~100 的百分比坐标，表示 left/top）
+    // 这 16 个点按顺时针绕一圈，形成「上方两个鼓起的圆弧 + 中间明显内凹 + 下方尖尖」的爱心轮廓
+    const HEART_POSITIONS = [
+      // 左上弧（更靠中间一点）
+      { x: 40, y: 25 },
+      { x: 35, y: 18 },
+      { x: 28, y: 20 },
+      { x: 25, y: 24 },
+      // 左侧向下到心尖
+      { x: 23, y: 30 },
+      { x: 24, y: 38 },
+      { x: 28, y: 48 },
+      { x: 36, y: 58 },
+      // 下方尖尖（稍微再靠下一点）
+      { x: 48, y: 70 },
+      // 右下到右侧（对称）
+      { x: 60, y: 58 },
+      { x: 68, y: 48 },
+      { x: 72, y: 38 },
+      { x: 73, y: 30 },
+      // 右上弧（更靠中间一点）
+      { x: 71, y: 24 },
+      { x: 64, y: 20 },
+      { x: 50, y: 25 }
+    ];
+
+    const cellElements = [];
+    let activatedCount = 0;
+    let heartLaidOut = false;
+
+    function layoutHeart() {
+      if (heartLaidOut) return;
+      heartLaidOut = true;
+      const elemWidth = 22; // 和初始宽度保持一致
+      cellElements.forEach((cell, index) => {
+        const pos = HEART_POSITIONS[index] || HEART_POSITIONS[HEART_POSITIONS.length - 1];
+        cell.style.width = elemWidth + "%";
+        cell.style.left = (pos.x - elemWidth / 2) + "%";
+        cell.style.top = (pos.y - elemWidth / 2) + "%";
+      });
+      showStartButton();
+    }
+
+    function showStartButton() {
+      if (startButton) return;
+      startButton = document.createElement("button");
+      startButton.className = "start-button";
+      startButton.textContent = "开启2026";
+      gridEl.appendChild(startButton);
+      startButton.addEventListener("click", enterPaintingMode);
+    }
+
+    function enterPaintingMode() {
+      if (paintingMode) return;
+      paintingMode = true;
+      if (startButton) {
+        startButton.remove();
+        startButton = null;
+      }
+
+      // 隐藏原来的球（保留在 DOM 中，方便之后如果需要还原）
+      cellElements.forEach((cell) => {
+        cell.style.opacity = "0";
+        cell.style.pointerEvents = "none";
+      });
+
+      // 进入画笔页时更新标题文案
+      const gameTitle = document.querySelector("#game-screen .title");
+      if (gameTitle) {
+        gameTitle.textContent = "我们一起来创造属于我们的未来叭～";
+      }
+
+      // 设置新的背景画布（请把 bg2026.png 替换成你自己的背景图片）
+      document.body.style.backgroundImage = "url('IMG_2382.jpg')";
+      document.body.style.backgroundSize = "cover";
+      document.body.style.backgroundPosition = "center center";
+      document.body.style.backgroundRepeat = "no-repeat";
+
+      // 创建绘画和烟花层
+      paintLayer = document.createElement("div");
+      paintLayer.id = "paint-layer";
+      document.body.appendChild(paintLayer);
+
+      fireworksCanvas = document.createElement("canvas");
+      fireworksCanvas.id = "fireworksCanvas";
+      paintLayer.appendChild(fireworksCanvas);
+
+      const resizeCanvas = () => {
+        fireworksCanvas.width = window.innerWidth;
+        fireworksCanvas.height = window.innerHeight;
+      };
+      resizeCanvas();
+      window.addEventListener("resize", resizeCanvas);
+
+      fireworksCtx = fireworksCanvas.getContext("2d");
+
+      paintLayer.addEventListener("pointerdown", handlePaintPointerDown);
+
+      requestAnimationFrame(updateFireworks);
+    }
+
+    function handlePaintPointerDown(e) {
+      if (!paintingMode) return;
+      const rect = paintLayer.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // 切换画笔图片（三种轮流）
+      const brushSrc = BRUSH_IMAGES[currentBrushIndex % BRUSH_IMAGES.length];
+      currentBrushIndex = (currentBrushIndex + 1) % BRUSH_IMAGES.length;
+
+      const img = document.createElement("img");
+      img.className = "brush-stamp";
+      img.src = brushSrc;
+      img.style.left = `${e.clientX}px`;
+      img.style.top = `${e.clientY}px`;
+      paintLayer.appendChild(img);
+
+      // 在点击位置触发一组烟花
+      spawnFirework(x, y);
+    }
+
+    function spawnFirework(x, y) {
+      const colors = ["#ff9ff3", "#feca57", "#1dd1a1", "#54a0ff", "#ff6b6b", "#f368e0"];
+      const count = 32;
+      for (let i = 0; i < count; i++) {
+        const angle = (Math.PI * 2 * i) / count;
+        const speed = 2 + Math.random() * 2.5;
+        fireworks.push({
+          x,
+          y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          alpha: 1,
+          radius: 2 + Math.random() * 2,
+          color: colors[Math.floor(Math.random() * colors.length)]
+        });
+      }
+    }
+
+    function updateFireworks() {
+      if (!fireworksCtx || !fireworksCanvas) return;
+      fireworksCtx.clearRect(0, 0, fireworksCanvas.width, fireworksCanvas.height);
+
+      // 更新粒子
+      fireworks.forEach((p) => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.03; // 轻微重力
+        p.alpha -= 0.015;
+      });
+
+      // 删除已经消失的粒子
+      for (let i = fireworks.length - 1; i >= 0; i--) {
+        if (fireworks[i].alpha <= 0) {
+          fireworks.splice(i, 1);
+        }
+      }
+
+      // 绘制粒子
+      fireworks.forEach((p) => {
+        fireworksCtx.save();
+        fireworksCtx.globalAlpha = Math.max(0, p.alpha);
+        fireworksCtx.fillStyle = p.color;
+        fireworksCtx.beginPath();
+        fireworksCtx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        fireworksCtx.fill();
+        fireworksCtx.restore();
+      });
+
+      requestAnimationFrame(updateFireworks);
+    }
+
+    // 生成 4x4 的不重叠网格槽位，然后随机打乱，用来作为初始随机位置
+    const ROWS = 4;
+    const COLS = 4;
+    const slots = [];
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        slots.push({ r, c });
+      }
+    }
+    // 打乱 slots（Fisher-Yates）
+    for (let i = slots.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [slots[i], slots[j]] = [slots[j], slots[i]];
+    }
+
+    BALL_CONFIGS.forEach((cfg, index) => {
+      const cell = document.createElement("div");
+      cell.className = "cell";
+
+      const ballBtn = document.createElement("div");
+      ballBtn.className = "ball-btn";
+      ballBtn.dataset.index = index;
+
+      const img = document.createElement("img");
+      img.alt = `ball-${index + 1}`;
+      img.src = cfg.img;
+      ballBtn.appendChild(img);
+
+      const dialog = document.createElement("div");
+      dialog.className = "dialog";
+      dialog.textContent = cfg.text;
+
+      cell.appendChild(ballBtn);
+      cell.appendChild(dialog);
+      gridEl.appendChild(cell);
+      cellElements.push(cell);
+
+      // 设置初始随机位置（不重叠），在各自网格槽位中随机偏移（但大小一致）
+      const slot = slots[index];
+      const slotWidth = 100 / COLS;  // 每个槽位在场景中的宽度百分比
+      const slotHeight = 100 / ROWS; // 每个槽位在场景中的高度百分比
+      const elemWidth = 22;          // 所有元素统一宽度（百分比）
+      cell.style.width = elemWidth + "%";
+
+      // 在当前槽位内部随机一个 left/top，保证不会超出该槽位
+      const maxOffsetX = Math.max(0, slotWidth - elemWidth);
+      const maxOffsetY = Math.max(0, slotHeight - elemWidth);
+      const offsetX = Math.random() * maxOffsetX;
+      const offsetY = Math.random() * maxOffsetY;
+
+      cell.style.left = (slot.c * slotWidth + offsetX) + "%";
+      cell.style.top = (slot.r * slotHeight + offsetY) + "%";
+
+      const audio = new Audio(cfg.audio);
+      let isShowing = false;
+
+      // ---- 拖拽逻辑（支持鼠标和触摸，使用 Pointer 事件）----
+      let dragging = false;
+      let dragStartX = 0;
+      let dragStartY = 0;
+      let startLeft = 0;
+      let startTop = 0;
+
+      cell.addEventListener("pointerdown", (e) => {
+        // 第一次任何交互时尝试启动背景音乐（满足移动端自动播放策略）
+        if (!bgmStarted && bgmEl) {
+          bgmStarted = true;
+          bgmEl.play().catch(() => {
+            // 如果被浏览器拦截就静默忽略
+          });
+        }
+
+        dragging = true;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        startLeft = parseFloat(cell.style.left) || 0;
+        startTop = parseFloat(cell.style.top) || 0;
+        cell.setPointerCapture(e.pointerId);
+      });
+
+      cell.addEventListener("pointermove", (e) => {
+        if (!dragging) return;
+        const dx = e.clientX - dragStartX;
+        const dy = e.clientY - dragStartY;
+        const w = gridEl.clientWidth || 1;
+        const h = gridEl.clientHeight || 1;
+        const dxPercent = (dx / w) * 100;
+        const dyPercent = (dy / h) * 100;
+        let newLeft = startLeft + dxPercent;
+        let newTop = startTop + dyPercent;
+        // 限制在场景内（避免拖出屏幕），使用统一元素宽度
+        const maxLeft = 100 - elemWidth;
+        const maxTop = 100 - elemWidth;
+        newLeft = Math.max(0, Math.min(maxLeft, newLeft));
+        newTop = Math.max(0, Math.min(maxTop, newTop));
+        cell.style.left = newLeft + "%";
+        cell.style.top = newTop + "%";
+      });
+
+      const endDrag = (e) => {
+        if (!dragging) return;
+        dragging = false;
+        if (e.pointerId != null) {
+          try {
+            cell.releasePointerCapture(e.pointerId);
+          } catch (_) {}
+        }
+      };
+
+      cell.addEventListener("pointerup", endDrag);
+      cell.addEventListener("pointercancel", endDrag);
+
+      // ---- 双击 / 双击触摸 显示对话框 ----
+      const SHOW_INTERVAL = 300; // 双击间隔（毫秒）
+      let lastTapTime = 0;
+
+      const closeDialog = () => {
+        if (!isShowing) return;
+        dialog.classList.remove("show");
+        dialog.style.display = "none";
+        ballBtn.style.visibility = "visible";
+        isShowing = false;
+      };
+
+      // 当一段语音自然播放结束时，自动收起对话框并复位台球
+      audio.addEventListener("ended", () => {
+        closeDialog();
+        try {
+          audio.currentTime = 0;
+        } catch (e) {}
+      });
+
+      const showDialog = () => {
+        if (isShowing) return;
+        isShowing = true;
+
+        // 第一次被触发时记录，全部触发后摆成爱心
+        if (!cell.dataset.activated) {
+          cell.dataset.activated = "1";
+          activatedCount += 1;
+          if (activatedCount === BALL_CONFIGS.length) {
+            layoutHeart();
+          }
+        }
+
+        ballBtn.style.visibility = "hidden";
+        dialog.style.display = "flex";
+        void dialog.offsetWidth;
+        dialog.classList.add("show");
+
+        try {
+          audio.currentTime = 0;
+          audio.play().catch(() => {});
+        } catch (e) {
+          console.error("audio play error", e);
+        }
+      };
+      // 桌面浏览器原生双击
+      ballBtn.addEventListener("dblclick", (e) => {
+        e.preventDefault();
+        showDialog();
+      });
+
+      // 移动端双击（双击/双点检测）
+      ballBtn.addEventListener("pointerup", (e) => {
+        // 如果刚刚有明显拖拽，就不算双击
+        if (dragging) return;
+        const now = Date.now();
+        if (now - lastTapTime < SHOW_INTERVAL) {
+          showDialog();
+          lastTapTime = 0;
+        } else {
+          lastTapTime = now;
+        }
+      });
+
+      window.addEventListener("beforeunload", () => {
+        audio.pause();
+      });
+    });
+  </script>
+</body>
+</html>
