@@ -601,7 +601,7 @@
       cell.addEventListener("pointercancel", endDrag);
 
       // ---- 双击 / 双击触摸 显示对话框 ----
-      const SHOW_INTERVAL = 300; // 双击间隔（毫秒）
+      const SHOW_INTERVAL = 400; // 双击间隔（毫秒，稍微放宽，方便手机）
       let lastTapTime = 0;
 
       const closeDialog = () => {
@@ -653,8 +653,6 @@
 
       // 移动端双击（双击/双点检测）
       ballBtn.addEventListener("pointerup", (e) => {
-        // 如果刚刚有明显拖拽，就不算双击
-        if (dragging) return;
         const now = Date.now();
         if (now - lastTapTime < SHOW_INTERVAL) {
           showDialog();
